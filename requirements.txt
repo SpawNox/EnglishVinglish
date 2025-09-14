@@ -1,0 +1,3 @@
+pyTelegramBotAPI~=4.29.1
+SQLAlchemy~=2.0.43
+python-dotenv~=1.1.1
