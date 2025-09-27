@@ -7,8 +7,7 @@ Base = declarative_base()
 class User(Base):
     __tablename__ = 'users'
 
-    id = sq.Column(sq.Integer, primary_key=True)
-    telegram_id = sq.Column(sq.BigInteger, nullable=False)
+    id = sq.Column(sq.BigInteger, primary_key=True)
     username = sq.Column(sq.String(length=100))
     created_at = sq.Column(sq.DateTime, default=datetime.utcnow)
 

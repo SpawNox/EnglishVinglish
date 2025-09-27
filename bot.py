@@ -1,7 +1,7 @@
 import telebot
 from telebot import types
 from config import TOKEN_TELEGRAM
-from crud import get_or_create_user, get_random_word, generate_options, add_word_to_user, delete_word_from_user
+from crud import get_or_create_user, add_word_to_user, delete_word_from_user, get_word_and_options
 from db_session import get_session
 
 bot = telebot.TeleBot(TOKEN_TELEGRAM)
@@ -9,6 +9,9 @@ user_states = {}
 
 @bot.message_handler(commands=['start'])
 def start(message):
+    with get_session() as session:
+        get_or_create_user(session, message.from_user.id, message.from_user.username)
+
     welcome_text = f"""
     Привет, <b>{message.from_user.username}</b>👋
 
@@ -29,14 +32,12 @@ def start(message):
 
 @bot.message_handler(func=lambda message: message.text == '📚 Учить слова')
 def learn_word(message):
+    user_id = message.from_user.id
     if message.from_user.id in user_states:
         del user_states[message.from_user.id]
     with get_session() as session:
-        user = get_or_create_user(session, message.from_user.id, message.from_user.username)
-        word = get_random_word(session, user.id)
-
+        word, options = get_word_and_options(session, user_id)
         if word:
-            options = generate_options(session, word)
             btn_add = types.KeyboardButton('➕ Добавить слово')
             btn_del = types.KeyboardButton('🗑️ Удалить слово')
             btn_next = types.KeyboardButton('⏭ Дальше')
@@ -48,7 +49,6 @@ def learn_word(message):
             user_states[message.from_user.id]= {
                 'action': 'learning',
                 'correct_answer': word.translation,
-                'word_id': word.id,
                 'word_text': word.word,
                 'options': options
             }
@@ -88,8 +88,7 @@ def process_add_word(message):
             return
 
         with get_session() as session:
-            user = get_or_create_user(session, user_id, message.from_user.username)
-            add_word_to_user(session, user.id, en_word, ru_word)
+            add_word_to_user(session, user_id, en_word.lower(), ru_word)
             bot.send_message(message.chat.id, f'Слово {en_word} успешно добавлено')
     except Exception as e:
         bot.send_message(message.chat.id, 'Произошла ошибка при добавлении слова')
@@ -102,7 +101,7 @@ def process_add_word(message):
 def delete_word(message):
     if message.from_user.id in user_states:
         del user_states[message.from_user.id]
-    msg = bot.send_message(message.chat.id, 'Введите слово на английском и его перевод через дефис:\nНапример: apple-яблоко')
+    msg = bot.send_message(message.chat.id, 'Введите слово на английском:\nНапример: apple')
 
     user_states[message.from_user.id] = {'action': 'deleting_word'}
 
@@ -112,24 +111,16 @@ def process_delete_word(message):
     user_id = message.from_user.id
 
     try:
-        if '-' not in message.text:
-            bot.send_message(message.chat.id, 'Неверный формат. Используйте дефис для разделения.')
-            if user_id in user_states:
-                del user_states[user_id]
-            return
-
         parts = message.text.split('-', 1)
         en_word = parts[0].strip()
-        ru_word = parts[1].strip()
 
-        if not en_word or not ru_word:
-            bot.send_message(message.chat.id, 'Слово и перевод не могут быть пустыми.')
+        if not en_word:
+            bot.send_message(message.chat.id, 'Слово не может быть пустыми.')
             if user_id in user_states:
                 del user_states[user_id]
             return
         with get_session() as session:
-            user = get_or_create_user(session, user_id, message.from_user.username)
-            deleted = delete_word_from_user(session, user.id, en_word, ru_word)
+            deleted = delete_word_from_user(session, user_id, en_word.lower())
             if not deleted:
                 bot.send_message(message.chat.id,f'Слово "{en_word}" не найдено в вашем словаре или является общим словом')
                 if user_id in user_states:
